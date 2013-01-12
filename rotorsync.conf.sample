@@ -1,0 +1,9 @@
+#RSNAP CONFIGURATION
+#Main settings (required)
+Username=maat
+BACKUPTO=/dev/sda3
+HOWMANY=5
+HOWOFTEN=1
+#Optional Settings
+BOOTDELAY=1m
+MOUNTOPTS=
