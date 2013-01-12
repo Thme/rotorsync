@@ -1,0 +1,157 @@
+#!/bin/bash  
+set -e
+
+if [[ -f /etc/rotorsync.conf ]] ; then 
+	source /etc/rotorsync.conf
+else
+	echo '/etc/rotrorsync.conf not found generating one...'
+	echo '#RSNAP CONFIGURATION'       > /etc/rotorsync.conf
+	echo '#Main settings (required)' >> /etc/rotorsync.conf
+	echo 'Username='                 >> /etc/rotorsync.conf
+	echo 'BACKUPTO='                 >> /etc/rotorsync.conf
+	echo 'HOWMANY='                  >> /etc/rotorsync.conf
+	echo 'HOWOFTEN='                 >> /etc/rotorsync.conf
+	echo '#Optional Settings'        >> /etc/rotorsync.conf
+	echo 'BOOTDELAY='                >> /etc/rotorsync.conf
+	echo 'MOUNTOPTS='		 >> /etc/rotorsync.conf
+	echo 'SUBDIR='			 >> /etc/rotorsync.conf
+	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
+	exit 0
+fi
+
+if [[ -z "$BACKUPTO" || -z "$Username" ]] || [[ -z "$HOWMANY"  || -z "$HOWOFTEN" ]] ; then
+	echo 'You MUST edit /etc/rsnap.conf before running this script'
+	exit 1
+fi 
+
+ISPATH=$(echo "$BACKUPTO" | cut -d '/' -f 2) 
+
+if [[ -b $BACKUPTO || -h $BACKUPTO ]] && [[ $ISPATH = dev && -z $MOUNTOPTS ]] ; then
+
+	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
+	mount "$BACKUPTO" /mnt/snapshots/ & m1=$! 
+	MNTPT="$BACKUPTO" && BACKUPTO=/mnt/snapshots && MNTDIR=$BACKUPTO
+	if [[ -n $SUBDIR && ! -d /mnt/snashots/$SUBDIR ]] ; then mkdir "/mnt/snaphots/$SUBDIR" ; fi
+	if [[ -n $SUBDIR && -d /mnt/snapshots/$SUBDIR ]] ; then BACKUPTO="/mnt/snapshots/$SUBDIR" ; fi
+
+elif [[ -b $BACKUPTO || -h $BACKUPTO ]] && [[ $ISPATH = dev && -n $MOUNTOPTS ]] ; then
+
+	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
+	mount "$MOUNTOPTS" "$BACKUPTO" /mnt/snapshots & m1=$!
+	MNTPT=$BACKUPTO && BACKUPTO="/mnt/snapshots"
+	if [[ -n $SUBDIR && ! -d /mnt/snapshots/$SUBDIR ]] ; then mkdir /mnt/snapshots/$SUBDIR ; fi
+	if [[ -n $SUBDIR && -d /mnt/snapshots/$SUBDIR ]] ; then	BACKUPTO="/mnt/snapshots/$SUBDIR" ; fi
+
+fi &&
+
+if [[ ! -d $BACKUPTO ]] ; then
+	mkdir "$BACKUPTO" && cd "$BACKUPTO"
+	if [[ ! -d ROOT ]] ; then mkdir ROOT/ ; fi
+	if [[ ! -d DOTFILES ]] ; then mkdir DOTFILES/ ; fi
+
+elif [[ -d $BACKUPTO  ]] ; then
+	cd "$BACKUPTO" 
+	if [[ ! -d ROOT ]] ; then mkdir ROOT/ ; fi
+	if [[ ! -d DOTFILES ]] ; then mkdir DOTFILES/ ; fi
+fi
+
+cd DOTFILES
+
+if [[ -f .xlist ]] ; then
+	xlst=.xlist && cd ..
+else
+	echo '- .gvfs'			  > .xlist
+	echo '- .dbus/**'		 >> .xlist 
+	echo '- .local/share/Trash/**'   >> .xlist 
+	echo '- .thumbnails/**' 	 >> .xlist       
+	echo '- .cache/**'		 >> .xlist	          
+	echo '- .opera/cache/**'	 >> .xlist
+	xlst=.xlist && cd ..
+fi
+
+cd "$BACKUPTO"/ROOT
+
+if [[ -f .rxlist ]] ; then
+	rxlst=.rxlist && cd ..
+else
+	echo '- dev/*'			 > .rxlist
+	echo '- proc/*'			>> .rxlist 
+	echo '- mnt/*'			>> .rxlist
+	echo '- tmp/*'			>> .rxlist
+	echo '- media/*'		>> .rxlist
+	echo '- run/*' 			>> .rxlist
+	echo '- sys/*'			>> .rxlist
+	echo '- var/lib/pacman/*'	>> .rxlist
+#	echo '- var/cache/pacman/*'	>> .rxlist
+	cd ..
+fi
+
+if [[ $1 =~ -f || $2 =~ -f ]] && [[ -n "$BOOTDELAY" ]] ; then BOOTDELAY=1 ; fi &&
+
+if [[ -n "$BOOTDELAY" ]] ; then sleep "$BOOTDELAY" ; fi
+
+N1="$HOWMANY" ; N2="$HOWOFTEN" ; opts="-aAXh --del"
+
+if [[ $1 =~ -v || $2 =~ -v ]] ; then opts="-aAXhv --del" ; fi
+
+touch --date="$(date -I -d "$N2 days ago") 00:01:00" .old
+
+root=/		dotdirs=/home/"$Username"
+
+if [[ .old -nt .lastrun || $1 =~ -f ]] || [[ $2 =~ -f ]] ; then
+
+	ionice -c3 -p $$ &> /dev/null
+	renice +15 -p $$ &> /dev/null
+
+	cd ROOT ; rdirs=( [0-9]*[0-9]/ ) ; rlnk="--link-dest="$PWD/${rdirs[-1]}""
+	cd .. && cd DOTFILES ; ddirs=( [0-9]*[0-9]/ ) ; dlnk="--link-dest="$PWD/${ddirs[-1]}"" &&  cd ..
+
+	if (( N1 >= 1 )) ; then cd ROOT 
+
+		if (( N1 > 1)) && [[ -d ${rdirs[-1]} && ${rdirs[-1]} != $(date -I)/ ]] ; then
+			rsync $opts --exclude-from=$rxlist 	"$rlnk"	$root	$(date -I)/ 
+		elif [[ ${rdirs[-1]} != $(date -I)/ && ! -d $(date -I)/ ]] && [[ -d  ${rdirs[-1]} ]] ; then
+			mv 	${rdirs[-1]} 	$(date -I)/
+			rsync $opts --exclude-from=$rxlist 	$root	$(date -I)/
+		elif [[ ${rdirs[-1]} = $(date -I)/ || ! -d ${rdirs[0]} ]] ; then
+			rsync $opts --exclude-from=$rxlist 	$root	$(date -I)/
+		fi
+	cd .. && cd DOTFILES 
+		if (( N1 > 1 )) && [[ -d ${ddirs[-1]} && ${ddirs[-1]} != $(date -I)/ ]] ; then
+			rsync $opts --exclude-from=.xlist	"$dlnk"	$dotdirs/.[^.]*		$(date -I)/
+		elif [[ ${ddirs[-1]} != $(date -I)/ && ! -d $(date -I)/ ]] && [[ -d ${ddirs[-1]} ]] ; then
+			mv 	${ddirs[-1]} 	$(date -I)/ 
+			rsync $opts --exclude-from=.xlist 	"$dotdirs"/.[^.]*	$(date -I)/
+		elif [[ ${ddirs[-1]} = $(date -I)/ || ! -d ${ddirs[0]} ]] ; then
+			rsync $opts --exclude-from=.xlist	"$dotdirs"/.[^.]*		$(date -I)/
+		fi
+	cd ..
+
+	fi 
+
+	unset rdirs && unset ddirs 
+
+	cd ROOT 
+	rdirs=( [0-9]*[0-9]/ ) ; drct1=$(( ${#rdirs[@]} - N1 )) ; if (( $drct1 <= 0 )) ; then drct1=0 ; fi
+	
+	if (( ${#rdirs[@]} > N1 ))  ; then
+		for xdirs1 in "${rdirs[@]:0:$drct1}" ; do rm -rv "$xdirs1" ; done
+	fi
+	
+	cd .. && cd DOTFILES 
+	ddirs=( [0-9]*[0-9]/ ) ; drct2=$(( ${#ddirs[@]} - N1 )) ; if (( $drct2 <= 0 )) ; then drct2=0 ; fi
+	
+	if (( ${#ddirs[@]} > N1 )) ; then 
+		for xdirs2 in "${ddirs[@]:0:$drct2}" ; do rm -rv "$xdirs2" ; done
+	fi
+	cd .. && touch -d "$(date -I)" .lastrun 
+else
+	
+	echo 'Rototrsync has already run recently'
+
+fi
+if [[ $PWD = /mnt/snapshots && $(findmnt -rno TARGET $BACKUPTO) = $MNTDIR ]] ; then
+	cd / ; sleep 3 &&  umount /mnt/snapshots
+fi
+exit 0
+
