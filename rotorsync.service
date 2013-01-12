@@ -1,0 +1,11 @@
+[Unit]
+Description=Rotorsync system backup script 
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rotorsync
+TimeoutSec=0
+
+[Install]
+WantedBy=multi-user.target
+
