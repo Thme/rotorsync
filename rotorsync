@@ -89,24 +89,24 @@ if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	done	
 	PS3="Are you sure you wish to continue?" 
 	ACTIONS="rsync-optimized full-restore format-and-restore"
-	f_methods() {
-	cat <<EOF
-	RESTORE METHODS:
-			"rsync-optimized" utilizes rsync's --del (--delete-during) option to remove
-		conflicting files between the snapshot and existing root. This method is the 
-		fastest and is very successful at restoring under most conditions. 
-		
-			"full-restore" this method is slower but will remove the entire root 
-		tree (except /home) before running rsync to	restore the chosen snapshot. It is 
-		slightly more effective than "rsync-optimized" and should only be used as a 
-		second try if the "rsync-optimized" failed 
-		
-			"format-and-restore"(not implemented yet) WARNING: This option will format the chosen root 
-		partition to a selected filesystem then perform the restore followed by regenerating 
-		/etc/fstab and updating grub.cfg (if using syslinux you'll have to manually 
-		update it before trying to boot.)
-	EOF
-	}
+f_methods() {
+cat <<EOF
+RESTORE METHODS:
+		"rsync-optimized" utilizes rsync's --del (--delete-during) option to remove
+	conflicting files between the snapshot and existing root. This method is the 
+	fastest and is very successful at restoring under most conditions. 
+	
+		"full-restore" this method is slower but will remove the entire root 
+	tree (except /home) before running rsync to	restore the chosen snapshot. It is 
+	slightly more effective than "rsync-optimized" and should only be used as a 
+	second try if the "rsync-optimized" failed 
+	
+		"format-and-restore"(not implemented yet) WARNING: This option will format the chosen root 
+	partition to a selected filesystem then perform the restore followed by regenerating 
+	/etc/fstab and updating grub.cfg (if using syslinux you'll have to manually 
+	update it before trying to boot.)
+EOF
+}
 	f_methods
 	select Op3 in $OPTYNQ ; do
 		if [[ $Op3 =~ Quit ]] ; then exit 0 ; fi
@@ -156,21 +156,25 @@ echo $R_DEV
 
 
 #exit 0
-
+f_rotorsync_conf() {
+cat <<EOF
+#ROTORSYNC CONFIGURATION
+#Main settings (required)
+Username=
+BACKUPTO=
+HOWMANY=
+HOWOFTEN=
+#Optional settings
+BOOTDELAY=
+MOUNTOPTS=
+SUBDIR=
+EOF
+}
 if [[ -f /etc/rotorsync.conf ]] ; then 
 	source /etc/rotorsync.conf
 else
 	echo '/etc/rotrorsync.conf not found generating one...'
-	echo '#RSNAP CONFIGURATION'       > /etc/rotorsync.conf
-	echo '#Main settings (required)' >> /etc/rotorsync.conf
-	echo 'Username='                 >> /etc/rotorsync.conf
-	echo 'BACKUPTO='                 >> /etc/rotorsync.conf
-	echo 'HOWMANY='                  >> /etc/rotorsync.conf
-	echo 'HOWOFTEN='                 >> /etc/rotorsync.conf
-	echo '#Optional Settings'        >> /etc/rotorsync.conf
-	echo 'BOOTDELAY='                >> /etc/rotorsync.conf
-	echo 'MOUNTOPTS='		 >> /etc/rotorsync.conf
-	echo 'SUBDIR='			 >> /etc/rotorsync.conf
+	f_rotorsync_conf	>	/etc/rotorsync.conf
 	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
 	exit 0
 fi
@@ -203,29 +207,38 @@ elif [[ -d $BACKUPTO  ]] ; then
 	if [[ ! -d DOTFILES ]] ; then mkdir DOTFILES/ ; fi
 fi
 cd DOTFILES
+f_xlst() {
+cat <<EOF
+- .gvfs
+- .dbus/**
+- .local/share/Trash/**
+- .thumbnails/**
+- .cache/**
+- .opera/cache/**
+EOF
+}
 if [[ -f .xlist ]] ; then
 	xlst=.xlist && cd ..
 else
-	echo '- .gvfs'			  > .xlist
-	echo '- .dbus/**'		 >> .xlist 
-	echo '- .local/share/Trash/**'   >> .xlist 
-	echo '- .thumbnails/**' 	 >> .xlist       
-	echo '- .cache/**'		 >> .xlist	          
-	echo '- .opera/cache/**'	 >> .xlist
+	f_xlst > .xlist
 	xlst=.xlist && cd ..
 fi
 cd "$BACKUPTO"/ROOT
+f_rxlst() {
+cat <<EOF
+- dev/*
+- proc/*
+- mnt/*
+- tmp/*
+- media/*
+- run/*
+- sys/*
+- var/lib/pacman/*
+EOF
 if [[ -f .rxlist ]] ; then
 	rxlst=.rxlist && cd ..
 else
-	echo '- dev/*'			 > .rxlist
-	echo '- proc/*'			>> .rxlist 
-	echo '- mnt/*'			>> .rxlist
-	echo '- tmp/*'			>> .rxlist
-	echo '- media/*'		>> .rxlist
-	echo '- run/*' 			>> .rxlist
-	echo '- sys/*'			>> .rxlist
-	echo '- var/lib/pacman/*'	>> .rxlist
+	f_rxlst > .rxlist
 #	echo '- var/cache/pacman/*'	>> .rxlist
 	cd ..
 fi
@@ -259,10 +272,11 @@ if [[ .old -nt .lastrun || $1 =~ -f ]] ; then
 			rsync $opts --exclude-from=.xlist	"$dotdirs"/.[^.]*		$(date -I)/
 		fi ; cd ..
 	fi ; unset rdirs && unset ddirs 
+	if [[ $1 =~ -v || $2 =~ -v ]] ; then rop="-rfv" else rop="-rf" ; fi
 	cd ROOT ; rdirs=( [0-9]*[0-9]/ ) ; drct1=$(( ${#rdirs[@]} - N1 )) ; if (( $drct1 <= 0 )) ; then drct1=0 ; fi
-	if (( ${#rdirs[@]} > N1 ))  ; then for xdirs1 in "${rdirs[@]:0:$drct1}" ; do rm -rv "$xdirs1" ; done ; fi
+	if (( ${#rdirs[@]} > N1 ))  ; then for xdirs1 in "${rdirs[@]:0:$drct1}" ; do rm $rop "$xdirs1" ; done ; fi
 	cd .. && cd DOTFILES ; ddirs=( [0-9]*[0-9]/ ) ; drct2=$(( ${#ddirs[@]} - N1 )) ; if (( $drct2 <= 0 )) ; then drct2=0 ; fi
-	if (( ${#ddirs[@]} > N1 )) ; then for xdirs2 in "${ddirs[@]:0:$drct2}" ; do rm -rv "$xdirs2" ; done ; fi
+	if (( ${#ddirs[@]} > N1 )) ; then for xdirs2 in "${ddirs[@]:0:$drct2}" ; do rm $rop "$xdirs2" ; done ; fi
 	cd .. && touch -d "$(date -I)" .lastrun 
 else
 	echo 'Rototrsync has already run recently'
