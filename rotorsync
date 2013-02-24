@@ -1,5 +1,13 @@
 #!/bin/bash
 set -e
+if [[ -f /etc/rotorsync.conf ]] ; then 
+	source /etc/rotorsync.conf
+else
+	echo '/etc/rotrorsync.conf not found generating one...'
+	f_rotorsync_conf	>	/etc/rotorsync.conf
+	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
+	exit 0
+fi
 f_dotrestore() {
 	if [[ -b $DEV2 ]] ; then mount $DEV2 /mnt/home ; fi
 	if [[ -d DOTFILES/$D_SOURCE ]] ; then 
@@ -10,28 +18,27 @@ f_dotrestore() {
 		rsync -aAXhvn 	DOTFILES/$D_SOURCE	 /mnt/home/$username/
 	fi
 }
-f_ifmntlabel() { findmnt $Opts | grep -e "/dev/sd[a-z][0-9]" 
-if [[ findmnt $Opts | grep -e "/dev/sd[a-z][0-9]" ]]  ; then e2label $(findmnt -rnuo SOURCE $Opts) $Opts 
-else echo "$Opts is not a disk mountpoint." 
-fi 
-}
-f_set_dev_labels() {
-	DEVCHOICES=( '/boot' '/' '/home' '/usr' '/var' 'Quit' )
+#if [[ $1 =~ --recovery-menu ]] && [[ ! -d ROOT || ! -d DOTFILES ]] ; then
+#	for xdev in "/boot / /var /home /usr" ; do 
+#		if	lsblk -rno LABEL | grep $xdev ; then mount $(lsblk -rno )
+#	
+#fi
+if [[ $1 =~ --set-dev-labels ]] ; then	 
+	DEVCHOICES=( 'boot' '/' 'home' 'usr' 'var' 'Quit' )
 	select Opts in ${DEVCHOICES[@]} ; do
 		if [[ $Opts =~ Quit ]] ; then exit 0 
-		elif [[ $Opts =~ /boot ]] ; then f_ifmntlabel
-		elif [[ $Opts =~ / ]] ; then f_ifmntlabel
-		elif [[ $Opts =~ /home ]] ; then f_ifmntlabel
-		elif [[ $Opts =~ /usr ]] ; then f_ifmntlabel
-		elif [[ $Opts =~ /var ]] ; then f_ifmntlabel
+		elif [[ $Opts =~ boot ]] ; then e2label $(findmnt -rnuo SOURCE /boot ) $Opts
+		elif [[ $Opts =~ / ]] ; then e2label $(findmnt -rnuo SOURCE / ) root
+		elif [[ $Opts =~ home ]] ; then e2label $(findmnt -rnuo SOURCE /home ) $Opts
+		elif [[ $Opts =~ usr ]] ; then e2label $(findmnt -rnuo SOURCE /usr ) $Opts
+		elif [[ $Opts =~ var ]] ; then e2label $(findmnt -rnuo SOURCE /var ) $Opts
 		fi
 	done
-}
-if [[ $1 =~ --recovery-menu ]] && [[ ! -d ROOT || ! -d DOTFILES ]] ; then
-	for xdev in "/boot / /var /home /usr" ; do 
-		if	lsblk -rno LABEL | grep $xdev ; then mount $(lsblk -rno )
+	for mnts in ${DEVCHOICES[@]} ; do 
+		if [[ $BACKUPTO != $(findmnt -rnuo SOURCE /$mnts) && $BACKUPTO != $(findmnt -rnuo SOURCE /) ]] && [[ -b $BACKUPTO ]] ; then e2label $BACKUPTO snapshots && break ; fi
+	done
+	exit 0
 fi
-if [[ $1 =~ --set-dev-labels ]] ; then f_set_dev_labels ; fi
 if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	MAIND=$PWD
 	OPTYNQ="Yes No Quit"
@@ -168,16 +175,9 @@ HOWOFTEN=
 BOOTDELAY=
 MOUNTOPTS=
 SUBDIR=
+
 EOF
 }
-if [[ -f /etc/rotorsync.conf ]] ; then 
-	source /etc/rotorsync.conf
-else
-	echo '/etc/rotrorsync.conf not found generating one...'
-	f_rotorsync_conf	>	/etc/rotorsync.conf
-	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
-	exit 0
-fi
 if [[ -z "$BACKUPTO" || -z "$Username" ]] || [[ -z "$HOWMANY"  || -z "$HOWOFTEN" ]] ; then
 	echo 'You MUST edit /etc/rotorsync.conf before running this script'
 	exit 1
