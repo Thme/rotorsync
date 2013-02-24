@@ -1,5 +1,21 @@
 #!/bin/bash
 set -e
+usage() {
+cat <<EOF
+	Command-line options:
+	--set-dev-labels		[ext(1,2,3) filesystems only!] Set partition labels for root home and any other mounted 
+								filesystems that are required to boot(any /boot /var or other root related partitions). 
+								This option drops into a menu. These labels are used for auto-detection when running 
+								the "--recovery-menu" option from a live medium
+	--find 					Search for and mount partitions accourding to thier "labels" as set by the "--set-dev-labels"
+								option.
+	--recovery-menu		Checks for partitions matching labels if then mount them and enter the
+								snapshot directory before beginning the restore menu prompt. Else this option must be executed 
+								from within the snapshot directory.
+	
+	
+EOF
+}
 if [[ -f /etc/rotorsync.conf ]] ; then 
 	source /etc/rotorsync.conf
 else
@@ -18,11 +34,6 @@ f_dotrestore() {
 		rsync -aAXhvn 	DOTFILES/$D_SOURCE	 /mnt/home/$username/
 	fi
 }
-#if [[ $1 =~ --recovery-menu ]] && [[ ! -d ROOT || ! -d DOTFILES ]] ; then
-#	for xdev in "/boot / /var /home /usr" ; do 
-#		if	lsblk -rno LABEL | grep $xdev ; then mount $(lsblk -rno )
-#	
-#fi
 if [[ $1 =~ --set-dev-labels ]] ; then	 
 	DEVCHOICES=( 'boot' '/' 'home' 'usr' 'var' 'Quit' )
 	select Opts in ${DEVCHOICES[@]} ; do
@@ -39,6 +50,15 @@ if [[ $1 =~ --set-dev-labels ]] ; then
 	done
 	exit 0
 fi
+if [[ $1 =~ --find ]] ; then
+	labels=( home snapshots root usr var boot )
+	for parts in ${labels[@]} ; do
+		blkid -o device -t LABEL=$parts &> /dev/null &&  
+		echo "$(blkid -o device -t LABEL=$parts)"
+	done
+	exit 0
+fi
+
 if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	MAIND=$PWD
 	OPTYNQ="Yes No Quit"
