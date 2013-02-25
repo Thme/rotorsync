@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+#All "heredocs"
 usage() {
 cat <<EOF
 	Command-line options:
@@ -9,11 +10,68 @@ cat <<EOF
 								the "--recovery-menu" option from a live medium
 	--find 					Search for and mount partitions accourding to thier "labels" as set by the "--set-dev-labels"
 								option.
-	--recovery-menu		Checks for partitions matching labels if then mount them and enter the
-								snapshot directory before beginning the restore menu prompt. Else this option must be executed 
-								from within the snapshot directory.
+	--copy,-c
+	--recovery-menu		If the partition where snapshots are kept is mounted this option will enter the
+								snapshot directory then drops into the recovey menu prompt. This option is intended for use only on 
+								live CD's/USB's. You can copy it with
+								
 	
 	
+EOF
+}
+f_rotorsync_conf() {
+cat <<EOF
+#ROTORSYNC CONFIGURATION
+#Main settings (required)
+Username=
+BACKUPTO=
+HOWMANY=
+HOWOFTEN=
+#Optional settings
+BOOTDELAY=
+MOUNTOPTS=
+SUBDIR=
+EOF
+}
+f_methods() {
+cat <<EOF
+RESTORE METHODS:
+		"rsync-optimized" utilizes rsync's --del (--delete-during) option to remove
+	conflicting files between the snapshot and existing root. This method is the 
+	fastest and is very successful at restoring under most conditions. 
+	
+		"full-restore" this method is slower but will remove the entire root 
+	tree (except /home) before running rsync to	restore the chosen snapshot. It is 
+	slightly more effective than "rsync-optimized" and should only be used as a 
+	second try if the "rsync-optimized" failed 
+	
+		"format-and-restore"(not implemented yet) WARNING: This option will format the chosen root 
+	partition to a selected filesystem then perform the restore followed by regenerating 
+	/etc/fstab and updating grub.cfg (if using syslinux you'll have to manually 
+	update it before trying to boot.)
+EOF
+}
+#dotfiles and root exclude lists for rsync
+f_xlst() {
+cat <<EOF
+- .gvfs
+- .dbus/**
+- .local/share/Trash/**
+- .thumbnails/**
+- .cache/**
+- .opera/cache/**
+EOF
+}
+f_rxlst() {
+cat <<EOF
+- dev/*
+- proc/*
+- mnt/*
+- tmp/*
+- media/*
+- run/*
+- sys/*
+- var/lib/pacman/*
 EOF
 }
 if [[ -f /etc/rotorsync.conf ]] ; then 
@@ -23,6 +81,14 @@ else
 	f_rotorsync_conf	>	/etc/rotorsync.conf
 	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
 	exit 0
+fi
+if [[ $1 =~ --copy-me || $1 =~ -c  ]] ; then
+	if [[ -f /usr/bin/rotorsync || -f /usr/local/bin/rotorsync ]] && [[ -f /etc/rotorsync.conf ]] ; then
+		if [[ -f /usr/bin/rotorsync ]] ; then cp /usr/bin/rotorsync $HOME/rotorsync.sh 
+		elif [[ -f /usr/local/bin/rotorsync ]] ; then cp "/usr/local/bin/rotorsync" $HOME/rotorsync.sh
+		fi
+		cp /etc/rotorsync.conf $HOME/rotorsync.conf
+		exit 0
 fi
 f_dotrestore() {
 	if [[ -b $DEV2 ]] ; then mount $DEV2 /mnt/home ; fi
@@ -34,7 +100,16 @@ f_dotrestore() {
 		rsync -aAXhvn 	DOTFILES/$D_SOURCE	 /mnt/home/$username/
 	fi
 }
-if [[ $1 =~ --set-dev-labels ]] ; then	 
+f_linfo() {
+cat <<EOF
+		Select each partiton to label hit enter to continue to the next. Quit once they've 
+	been selected. This must match yot fstab or system partition layout.
+	
+EOF
+}
+if [[ $1 =~ --set-dev-labels ]] ; then 
+	
+	PS3="Select partition/s to label: "
 	DEVCHOICES=( 'boot' '/' 'home' 'usr' 'var' 'Quit' )
 	select Opts in ${DEVCHOICES[@]} ; do
 		if [[ $Opts =~ Quit ]] ; then exit 0 
@@ -116,24 +191,7 @@ if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	done	
 	PS3="Are you sure you wish to continue?" 
 	ACTIONS="rsync-optimized full-restore format-and-restore"
-f_methods() {
-cat <<EOF
-RESTORE METHODS:
-		"rsync-optimized" utilizes rsync's --del (--delete-during) option to remove
-	conflicting files between the snapshot and existing root. This method is the 
-	fastest and is very successful at restoring under most conditions. 
-	
-		"full-restore" this method is slower but will remove the entire root 
-	tree (except /home) before running rsync to	restore the chosen snapshot. It is 
-	slightly more effective than "rsync-optimized" and should only be used as a 
-	second try if the "rsync-optimized" failed 
-	
-		"format-and-restore"(not implemented yet) WARNING: This option will format the chosen root 
-	partition to a selected filesystem then perform the restore followed by regenerating 
-	/etc/fstab and updating grub.cfg (if using syslinux you'll have to manually 
-	update it before trying to boot.)
-EOF
-}
+
 	f_methods
 	select Op3 in $OPTYNQ ; do
 		if [[ $Op3 =~ Quit ]] ; then exit 0 ; fi
@@ -170,6 +228,7 @@ EOF
 			break
 		fi
 		break
+	
 	done			
 fi
 echo "Chosen \.Dotfiles Restore point\:"
@@ -183,21 +242,7 @@ echo $R_DEV
 
 
 #exit 0
-f_rotorsync_conf() {
-cat <<EOF
-#ROTORSYNC CONFIGURATION
-#Main settings (required)
-Username=
-BACKUPTO=
-HOWMANY=
-HOWOFTEN=
-#Optional settings
-BOOTDELAY=
-MOUNTOPTS=
-SUBDIR=
 
-EOF
-}
 if [[ -z "$BACKUPTO" || -z "$Username" ]] || [[ -z "$HOWMANY"  || -z "$HOWOFTEN" ]] ; then
 	echo 'You MUST edit /etc/rotorsync.conf before running this script'
 	exit 1
@@ -227,16 +272,7 @@ elif [[ -d $BACKUPTO  ]] ; then
 	if [[ ! -d DOTFILES ]] ; then mkdir DOTFILES/ ; fi
 fi
 cd DOTFILES
-f_xlst() {
-cat <<EOF
-- .gvfs
-- .dbus/**
-- .local/share/Trash/**
-- .thumbnails/**
-- .cache/**
-- .opera/cache/**
-EOF
-}
+
 if [[ -f .xlist ]] ; then
 	xlst=.xlist && cd ..
 else
@@ -244,17 +280,6 @@ else
 	xlst=.xlist && cd ..
 fi
 cd "$BACKUPTO"/ROOT
-f_rxlst() {
-cat <<EOF
-- dev/*
-- proc/*
-- mnt/*
-- tmp/*
-- media/*
-- run/*
-- sys/*
-- var/lib/pacman/*
-EOF
 if [[ -f .rxlist ]] ; then
 	rxlst=.rxlist && cd ..
 else
