@@ -1,5 +1,23 @@
 #!/bin/bash
 set -e
+#ascii() {
+#cat <<EOF
+#MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+#MMMMM     "\MM'    'M        M'    'M     "\MMM'      MM. YMMY .MM  'MMM  MMV'   'VMMMM
+#MMMMM  MM)  MM  00  MMMM  MMMM  00  M  MM)  MMM  0MMMMMMM. \/ .MMM  .'MM  MM  dMb  MMMM
+#MMMMM      <MM  MM  MMMM  MMMM  MM  M      <MMM.     'MMMM.  .MMMM  M.'M  MM  MMMMMMMMM
+#MMMMM  MMb  VM  00  MMMM  MMMM  00  M  MMb  VMMMMMM0  MMMMM  MMMMM  MM.   MM  "0" .MMMM
+#MMMMM  MMMb  V.    .MMMM  MMMM.    .M  MMMb  VM      .MMMMM  MMMMM  MMM.  MMk.   .MMMMM
+#MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+#     
+#
+#
+#
+#
+#	   
+#
+#EOF
+#}
 #All "heredocs"
 usage() {
 cat <<EOF
@@ -10,13 +28,16 @@ cat <<EOF
 								the "--recovery-menu" option from a live medium
 	--find 					Search for and mount partitions accourding to thier "labels" as set by the "--set-dev-labels"
 								option.
-	--copy,-c
+	--copy-me, -c
 	--recovery-menu		If the partition where snapshots are kept is mounted this option will enter the
-								snapshot directory then drops into the recovey menu prompt. This option is intended for use only on 
-								live CD's/USB's. You can copy it with
+								snapshot directory then drops into the recovey menu prompt. This option is intended for use 
+								only on live CD's/USB's. You can copy it with
 								
-	
-	
+	-f, --force				Force rotorsync to take a snapshot or update the existing one (if one was created earlier today) 
+								ignoring the schedule.(this will count	as a regular run and the next will follow this run 
+								according to your the setting "HOWOFTEN=" 
+
+	-v							print verbose output for rsync and rm 
 EOF
 }
 f_rotorsync_conf() {
@@ -72,6 +93,7 @@ cat <<EOF
 - run/*
 - sys/*
 - var/lib/pacman/*
+- var/cache/*
 EOF
 }
 if [[ -f /etc/rotorsync.conf ]] ; then 
@@ -88,6 +110,7 @@ if [[ $1 =~ --copy-me || $1 =~ -c  ]] ; then
 		elif [[ -f /usr/local/bin/rotorsync ]] ; then cp "/usr/local/bin/rotorsync" $HOME/rotorsync.sh
 		fi
 		cp /etc/rotorsync.conf $HOME/rotorsync.conf
+	fi
 		exit 0
 fi
 f_dotrestore() {
@@ -103,12 +126,10 @@ f_dotrestore() {
 f_linfo() {
 cat <<EOF
 		Select each partiton to label hit enter to continue to the next. Quit once they've 
-	been selected. This must match yot fstab or system partition layout.
-	
+	been selected. This must match your fstab partition layout.
 EOF
 }
 if [[ $1 =~ --set-dev-labels ]] ; then 
-	
 	PS3="Select partition/s to label: "
 	DEVCHOICES=( 'boot' '/' 'home' 'usr' 'var' 'Quit' )
 	select Opts in ${DEVCHOICES[@]} ; do
@@ -126,14 +147,13 @@ if [[ $1 =~ --set-dev-labels ]] ; then
 	exit 0
 fi
 if [[ $1 =~ --find ]] ; then
-	labels=( home snapshots root usr var boot )
+	labels=( snapshots root home usr var boot )
 	for parts in ${labels[@]} ; do
 		blkid -o device -t LABEL=$parts &> /dev/null &&  
 		echo "$(blkid -o device -t LABEL=$parts)"
 	done
 	exit 0
 fi
-
 if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	MAIND=$PWD
 	OPTYNQ="Yes No Quit"
@@ -191,7 +211,6 @@ if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	done	
 	PS3="Are you sure you wish to continue?" 
 	ACTIONS="rsync-optimized full-restore format-and-restore"
-
 	f_methods
 	select Op3 in $OPTYNQ ; do
 		if [[ $Op3 =~ Quit ]] ; then exit 0 ; fi
@@ -228,21 +247,9 @@ if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 			break
 		fi
 		break
-	
-	done			
+	done	
+#	break		
 fi
-echo "Chosen \.Dotfiles Restore point\:"
-echo $D_SOURCE
-echo "Chosen System\: Restore point\:"
-echo $R_SOURCE
-echo "Home Partition\:"
-echo $H_DEV
-echo "Root Partition\:"
-echo $R_DEV
-
-
-#exit 0
-
 if [[ -z "$BACKUPTO" || -z "$Username" ]] || [[ -z "$HOWMANY"  || -z "$HOWOFTEN" ]] ; then
 	echo 'You MUST edit /etc/rotorsync.conf before running this script'
 	exit 1
