@@ -1,27 +1,11 @@
 #!/bin/bash
 set -e
-#ascii() {
-#cat <<EOF
-#MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
-#MMMMM     "\MM'    'M        M'    'M     "\MMM'      MM. YMMY .MM  'MMM  MMV'   'VMMMM
-#MMMMM  MM)  MM  00  MMMM  MMMM  00  M  MM)  MMM  0MMMMMMM. \/ .MMM  .'MM  MM  dMb  MMMM
-#MMMMM      <MM  MM  MMMM  MMMM  MM  M      <MMM.     'MMMM.  .MMMM  M.'M  MM  MMMMMMMMM
-#MMMMM  MMb  VM  00  MMMM  MMMM  00  M  MMb  VMMMMMM0  MMMMM  MMMMM  MM.   MM  "0" .MMMM
-#MMMMM  MMMb  V.    .MMMM  MMMM.    .M  MMMb  VM      .MMMMM  MMMMM  MMM.  MMk.   .MMMMM
-#MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
-#     
-#
-#
-#
-#
-#	   
-#
-#EOF
-#}
 #All "heredocs"
 usage() {
 cat <<EOF
 	Command-line options:
+	--cfg                Generate a clean configuration file: "/etc/rotorsync.conf". This overwrites the existing rotorsync.conf if present.
+
 	--set-dev-labels		[ext(1,2,3) filesystems only!] Set partition labels for root home and any other mounted 
 								filesystems that are required to boot(any /boot /var or other root related partitions). 
 								This option drops into a menu. These labels are used for auto-detection when running 
@@ -98,7 +82,7 @@ EOF
 }
 if [[ -f /etc/rotorsync.conf ]] ; then 
 	source /etc/rotorsync.conf
-else
+elif [[ ! -f /etc/rotorsync.conf ||  ]]
 	echo '/etc/rotrorsync.conf not found generating one...'
 	f_rotorsync_conf	>	/etc/rotorsync.conf
 	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
@@ -214,8 +198,8 @@ if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 	f_methods
 	select Op3 in $OPTYNQ ; do
 		if [[ $Op3 =~ Quit ]] ; then exit 0 ; fi
-		if [[ $Op3 =~ No ]] ; then break ; fi
-		if [[ $Op3 =~ Yes ]] ; then
+		if [[ $Op3 =~ No ]] ; then echo "Aborted" && exit 0 ; fi
+		if [[ $Op3 =~ Yes ]] ; then 
 			f_methods
 			select METHOD in $ACTIONS ; do
 			  	if [[ $METHOD =~ rsync-optimized ]] ; then 
@@ -255,7 +239,7 @@ if [[ -z "$BACKUPTO" || -z "$Username" ]] || [[ -z "$HOWMANY"  || -z "$HOWOFTEN"
 	exit 1
 fi 
 ISPATH=$(echo "$BACKUPTO" | cut -d '/' -f 2) 
-if [[ -b $BACKUPTO || -h $BACKUPTO ]] && [[ $ISPATH = dev && -z $MOUNTOPTS ]] ; then
+if [[ -b $BACKUPTO ]] && [[ $ISPATH = dev && -z $MOUNTOPTS ]] ; then
 	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
 	mount "$BACKUPTO" /mnt/snapshots/ & m1=$! 
 	MNTPT="$BACKUPTO" && BACKUPTO=/mnt/snapshots && MNTDIR=$BACKUPTO
@@ -299,8 +283,10 @@ if [[ $1 =~ -f || $2 =~ -f ]] && [[ -n "$BOOTDELAY" ]] ; then BOOTDELAY=1 ; fi &
 if [[ -n "$BOOTDELAY" ]] ; then sleep "$BOOTDELAY" ; fi
 N1="$HOWMANY" ; N2="$HOWOFTEN" ; opts="-aAXh --del"
 if [[ $1 =~ -v || $2 =~ -v ]] ; then opts="-aAXhv --del" ; fi
+
 touch --date="$(date -I -d "$N2 days ago") 00:01:00" .old
 root=/		dotdirs=/home/"$Username"
+
 if [[ .old -nt .lastrun || $1 =~ -f ]] ; then
 	ionice -c3 -p $$ &> /dev/null
 	renice +15 -p $$ &> /dev/null
