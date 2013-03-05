@@ -79,6 +79,7 @@ cat <<EOF
 - var/lib/pacman/*
 - var/cache/*
 EOF
+
 }
 if [[ -f /etc/rotorsync.conf ]] ; then 
 	source /etc/rotorsync.conf
