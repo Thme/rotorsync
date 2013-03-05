@@ -294,12 +294,12 @@ if [[ .old -nt .lastrun || $1 =~ -f ]] ; then
 	cd .. && cd DOTFILES ; ddirs=( [0-9]*[0-9]/ ) ; dlnk="--link-dest="$PWD/${ddirs[-1]}"" &&  cd ..
 	if (( N1 >= 1 )) ; then cd ROOT 
 		if (( N1 > 1)) && [[ -d ${rdirs[-1]} && ${rdirs[-1]} != $(date -I)/ ]] ; then
-			rsync $opts --exclude={/dev/*,/proc/*,/run/*,/tmp/*,/media/*,/sys/*,/home/*,/mnt/*} "$rlnk"	$root	$(date -I)/ 
+			rsync $opts --exclude-from=.rxlist "$rlnk"	$root	$(date -I)/ 
 		elif [[ ${rdirs[-1]} != $(date -I)/ && ! -d $(date -I)/ ]] && [[ -d  ${rdirs[-1]} ]] ; then
 			mv 	${rdirs[-1]} 	$(date -I)/
-			rsync $opts --exclude={/dev/*,/proc/*,/run/*,/tmp/*,/media/*,/sys/*,/home/*,/mnt/*} $root	$(date -I)/
+			rsync $opts --exclude-from=.rxlist $root	$(date -I)/
 		elif [[ ${rdirs[-1]} = $(date -I)/ || ! -d ${rdirs[0]} ]] ; then
-			rsync $opts --exclude={/dev/*,/proc/*,/run/*,/tmp/*,/media/*,/sys/*,/home/*,/mnt/*} $root	$(date -I)/
+			rsync $opts --exclude-from=.rxlist $root	$(date -I)/
 		fi ; cd .. && cd DOTFILES 
 		if (( N1 > 1 )) && [[ -d ${ddirs[-1]} && ${ddirs[-1]} != $(date -I)/ ]] ; then
 			rsync $opts --exclude-from=.xlist	"$dlnk"	$dotdirs/.[^.]*		$(date -I)/
@@ -311,10 +311,22 @@ if [[ .old -nt .lastrun || $1 =~ -f ]] ; then
 		fi ; cd ..
 	fi ; unset rdirs && unset ddirs 
 	if [[ $1 =~ -v || $2 =~ -v ]] ; then rop="-rfv" else rop="-rf" ; fi
-	cd ROOT ; rdirs=( [0-9]*[0-9]/ ) ; drct1=$(( ${#rdirs[@]} - N1 )) ; if (( $drct1 <= 0 )) ; then drct1=0 ; fi
-	if (( ${#rdirs[@]} > N1 ))  ; then for xdirs1 in "${rdirs[@]:0:$drct1}" ; do rm $rop "$xdirs1" ; done ; fi
-	cd .. && cd DOTFILES ; ddirs=( [0-9]*[0-9]/ ) ; drct2=$(( ${#ddirs[@]} - N1 )) ; if (( $drct2 <= 0 )) ; then drct2=0 ; fi
-	if (( ${#ddirs[@]} > N1 )) ; then for xdirs2 in "${ddirs[@]:0:$drct2}" ; do rm $rop "$xdirs2" ; done ; fi
+	cd ROOT 
+	rdirs=( [0-9]*[0-9]/ ) ; drct1=$(( ${#rdirs[@]} - N1 ))
+	if (( $drct1 <= 0 )) ; then drct1=0 ; fi
+	if (( ${#rdirs[@]} > N1 ))  ; then 
+		for xdirs1 in "${rdirs[@]:0:$drct1}" ; do 
+			rm $rop "$xdirs1" 
+		done
+	fi
+	cd .. && cd DOTFILES 
+	ddirs=( [0-9]*[0-9]/ ) ; drct2=$(( ${#ddirs[@]} - N1 )) 
+	if (( $drct2 <= 0 )) ; then drct2=0 ; fi
+	if (( ${#ddirs[@]} > N1 )) ; then 
+		for xdirs2 in "${ddirs[@]:0:$drct2}" ; do 
+			rm $rop "$xdirs2"
+		done
+	fi
 	cd .. && touch -d "$(date -I)" .lastrun 
 else
 	echo 'Rototrsync has already run recently'
@@ -323,4 +335,3 @@ if [[ $PWD = /mnt/snapshots && $(findmnt -rno TARGET $BACKUPTO) = $MNTDIR ]] ; t
 	cd / ; sleep 3 &&  umount /mnt/snapshots
 fi
 exit 0
-
