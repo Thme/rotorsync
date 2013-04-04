@@ -1,29 +1,72 @@
 #!/bin/bash
+# Copyright (C) Jessiah Hubbard <jessejamesillusionist@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#   Rotorsync is a minimal program for taking system snapshots through using rsync. It focuses on 
+# stability, simplicity and easy manageablity over extra features and often confusing options. 
+# It is designed for use as a single program for maintaining, taking and rotating incremental 
+# snapshots based on the capabilities of rsync and bash. It is non-POSIX compliant but still 
+# very portable and very usable on any system which features bash and rsync among other common and
+# well deveoped linux tools. It's primary focus leans towards users who wish to have  
+# a dedicated partition for system and configuration snapshots however snapshots can be kept in a
+# directory elsewhere on one of the currently mounted partitions of the users system(ex. /home). It takes 
+# advantage of "--link-dest=" argument to create mirror style snapshots for easy manageability. If 
+# a user wishes to keep rotating snapshots in a different manner then rotorsync is not for this.
+# Rotorsync offers a unique way to restore for previous snaphots cleanly and effectively from any live 
+# medium which has rsync and bash installed(ex. live cds and bootable usb sticks which have this script 
+# copied to a safe and accessible place from which it can be executed inside any interactive shell. 
+#
+#
+#
+#
+#
 set -e
 #All "heredocs"
-usage() {
+f_usage() {
 cat <<EOF
 	Command-line options:
-	--cfg                Generate a clean configuration file: "/etc/rotorsync.conf". This overwrites the existing rotorsync.conf if present.
+   --hide               Opens hide prompt for appending other ".dotfiles" to the default exclude list.
 
-	--set-dev-labels		[ext(1,2,3) filesystems only!] Set partition labels for root home and any other mounted 
-								filesystems that are required to boot(any /boot /var or other root related partitions). 
-								This option drops into a menu. These labels are used for auto-detection when running 
-								the "--recovery-menu" option from a live medium
-	--find 					Search for and mount partitions accourding to thier "labels" as set by the "--set-dev-labels"
-								option.
-	--copy-me, -c
-	--recovery-menu		If the partition where snapshots are kept is mounted this option will enter the
-								snapshot directory then drops into the recovey menu prompt. This option is intended for use 
-								only on live CD's/USB's. You can copy it with
+   --cfg                Generate a clean configuration file: "/etc/rotorsync.conf". 
+                        This overwrites the existing rotorsync.conf if present.
+
+   --set-dev-labels     [ext(1,2,3) filesystems only!] Set partition labels for root home and any other mounted 
+                        filesystems that are required to boot(any /boot /var or other root related partitions). 
+                        this option drops into a menu. These labels are used for auto-detection when running 
+                        the "--recovery-menu" option from a live medium
+
+   --find               Search for and mount partitions accourding to thier "labels" as set by the "--set-dev-labels"
+                        option.
+
+   --copy-me, -c
+
+   --recovery-menu      If the partition where snapshots are kept is mounted this option will enter the
+                        snapshot directory then drops into the recovey menu prompt. This option is intended for use 
+                        only on live CD's/USB's. You can copy it with
 								
-	-f, --force				Force rotorsync to take a snapshot or update the existing one (if one was created earlier today) 
-								ignoring the schedule.(this will count	as a regular run and the next will follow this run 
-								according to your the setting "HOWOFTEN=" 
+   -f, --force          Force rotorsync to take a snapshot or update the existing one (if one was created earlier today) 
+                        ignoring the schedule.(this will count	as a regular run and the next will follow this run 
+                        according to your the setting "HOWOFTEN=" 
 
-	-v							print verbose output for rsync and rm 
+   -v	                  print verbose output for rsync and rm 
+
+   --help, -h           Print this help text.
 EOF
 }
+if [[ $1 =~ -h || $1 =~ --help ]] ; then f_usage && exit 0 ; fi
+
 f_rotorsync_conf() {
 cat <<EOF
 #ROTORSYNC CONFIGURATION
@@ -38,6 +81,7 @@ MOUNTOPTS=
 SUBDIR=
 EOF
 }
+
 f_methods() {
 cat <<EOF
 RESTORE METHODS:
@@ -57,6 +101,8 @@ RESTORE METHODS:
 EOF
 }
 #dotfiles and root exclude lists for rsync
+#See my github README on how to add more
+
 f_xlst() {
 cat <<EOF
 - .gvfs
@@ -72,6 +118,7 @@ cat <<EOF
 - dev/*
 - proc/*
 - mnt/*
+- home/*
 - tmp/*
 - media/*
 - run/*
@@ -79,12 +126,30 @@ cat <<EOF
 - var/lib/pacman/*
 - var/cache/*
 EOF
-
 }
+
+f_mount_or_find() {
+ISPATH=$(echo "$BACKUPTO" | cut -d '/' -f 2) 
+if [[ -b $BACKUPTO ]] && [[ $ISPATH = dev && -z $MOUNTOPTS ]] ; then
+	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
+	mount "$BACKUPTO" /mnt/snapshots/ & m1=$! 
+	MNTPT="$BACKUPTO" && BACKUPTO=/mnt/snapshots && MNTDIR=$BACKUPTO
+	if [[ -n $SUBDIR && ! -d /mnt/snashots/$SUBDIR ]] ; then mkdir "/mnt/snaphots/$SUBDIR" ; fi
+	if [[ -n $SUBDIR && -d /mnt/snapshots/$SUBDIR ]] ; then BACKUPTO="/mnt/snapshots/$SUBDIR" ; fi
+elif [[ -b $BACKUPTO || -h $BACKUPTO ]] && [[ $ISPATH = dev && -n $MOUNTOPTS ]] ; then
+	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
+	mount "$MOUNTOPTS" "$BACKUPTO" /mnt/snapshots & m1=$!
+	MNTPT=$BACKUPTO && BACKUPTO="/mnt/snapshots"
+	if [[ -n $SUBDIR && ! -d /mnt/snapshots/$SUBDIR ]] ; then mkdir /mnt/snapshots/$SUBDIR ; fi
+	if [[ -n $SUBDIR && -d /mnt/snapshots/$SUBDIR ]] ; then	BACKUPTO="/mnt/snapshots/$SUBDIR" 
+	fi
+fi
+}
+
 if [[ -f /etc/rotorsync.conf ]] ; then 
 	source /etc/rotorsync.conf
-elif [[ ! -f /etc/rotorsync.conf ||  ]]
-	echo '/etc/rotrorsync.conf not found generating one...'
+elif [[ ! -f /etc/rotorsync.conf || $1 =~ --cfg ]] ; then
+	echo 'generating /etc/rotorsync.conf configuration file...'
 	f_rotorsync_conf	>	/etc/rotorsync.conf
 	echo 'DONE! Now please edit /etc/rotorsync.conf before continuing!'
 	exit 0
@@ -98,13 +163,24 @@ if [[ $1 =~ --copy-me || $1 =~ -c  ]] ; then
 	fi
 		exit 0
 fi
+f_read_username() {
+echo 'Type "Quit" to exit rotorsync or "Skip" to skip on to the next steps.'
+while true ; do
+	read -p "Enter your username for the target system: " input
+	if [[ -d /mnt/home/$input/ ]] ; then HME="/mnt/home/$input" & break
+	elif [[ ! -d /mnt/home/$input/ ]] ; then echo "/mnt/home/$input is not an existing home directory try again Or type '"Quit" or "exit"' to quit this prompt or exit this script"
+	elif [[ $input =~ quit || $input =~ Quit ]] ; then echo "Exiting rotorsync..." &&  exit 0
+	elif [[ $input =~ skip || $input =~ Skip ]] ; then echo "Skipping home directories" && break
+	fi
+done
+}
 f_dotrestore() {
+	f_read_username
 	if [[ -b $DEV2 ]] ; then mount $DEV2 /mnt/home ; fi
 	if [[ -d DOTFILES/$D_SOURCE ]] ; then 
 		sleep 3 
-		mkdir /mnt/home/dot.tmp/
-		#this will need fixing in final release
-		mv /mnt/home/*/.[^.]* /mnt/home/dot.tmp/
+		mkdir $HME/hidden.tmp.d/
+		mv $HME/.[^.]* $HME/hidden.tmp.d/
 		rsync -aAXhvn 	DOTFILES/$D_SOURCE	 /mnt/home/$username/
 	fi
 }
@@ -114,6 +190,30 @@ cat <<EOF
 	been selected. This must match your fstab partition layout.
 EOF
 }
+if [[ $1 =~ --hide ]] ; then
+	echo 'Type "Quit" to exit rotorsync or "Skip" to skip on to the next steps.'
+	while true ; do
+		read -p "Enter your username for the target system: " input
+		if [[ -d /home/$input/ ]] ; then echo "/home/$input" > .dir & break
+		elif [[ ! -d /home/$input/ ]] ; then echo "/home/$input is not an existing home directory try again Or type '"Quit" or "exit"' to quit this prompt or exit this script"
+		elif [[ $input =~ quit || $input =~ Quit ]] ; then echo "Exiting rotorsync..." &&  exit 0
+		elif [[ $input =~ skip || $input =~ Skip ]] ; then echo "Skipping home directories" && break
+	   fi
+	done
+#cat .dir && exit 0
+   HME=$(cat .dir)
+	cd $HME
+	list=( .[^.]* )
+	list+=( Quit )
+	select hidden in "${list[@]}" ; do
+		if [[ $hidden =~ Quit  ]] ; then
+			echo "Done..." && exit 0
+		else
+			f_mount_or_find && 
+			echo "- $hidden**" >> DOTFILES/.xlist	
+		fi
+	done
+fi
 if [[ $1 =~ --set-dev-labels ]] ; then 
 	PS3="Select partition/s to label: "
 	DEVCHOICES=( 'boot' '/' 'home' 'usr' 'var' 'Quit' )
@@ -236,24 +336,12 @@ if [[ $1 =~ --recovery-menu ]] && [[ -d ROOT && -d DOTFILES ]] ; then
 #	break		
 fi
 if [[ -z "$BACKUPTO" || -z "$Username" ]] || [[ -z "$HOWMANY"  || -z "$HOWOFTEN" ]] ; then
-	echo 'You MUST edit /etc/rotorsync.conf before running this script'
+	echo 'You MUST edit /etc/rotorsync.conf before running this script.'
 	exit 1
 fi 
-ISPATH=$(echo "$BACKUPTO" | cut -d '/' -f 2) 
-if [[ -b $BACKUPTO ]] && [[ $ISPATH = dev && -z $MOUNTOPTS ]] ; then
-	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
-	mount "$BACKUPTO" /mnt/snapshots/ & m1=$! 
-	MNTPT="$BACKUPTO" && BACKUPTO=/mnt/snapshots && MNTDIR=$BACKUPTO
-	if [[ -n $SUBDIR && ! -d /mnt/snashots/$SUBDIR ]] ; then mkdir "/mnt/snaphots/$SUBDIR" ; fi
-	if [[ -n $SUBDIR && -d /mnt/snapshots/$SUBDIR ]] ; then BACKUPTO="/mnt/snapshots/$SUBDIR" ; fi
-elif [[ -b $BACKUPTO || -h $BACKUPTO ]] && [[ $ISPATH = dev && -n $MOUNTOPTS ]] ; then
-	if [[ ! -d /mnt/snapshots ]] ; then mkdir /mnt/snapshots ; fi
-	mount "$MOUNTOPTS" "$BACKUPTO" /mnt/snapshots & m1=$!
-	MNTPT=$BACKUPTO && BACKUPTO="/mnt/snapshots"
-	if [[ -n $SUBDIR && ! -d /mnt/snapshots/$SUBDIR ]] ; then mkdir /mnt/snapshots/$SUBDIR ; fi
-	if [[ -n $SUBDIR && -d /mnt/snapshots/$SUBDIR ]] ; then	BACKUPTO="/mnt/snapshots/$SUBDIR" 
-	fi
-fi &&
+
+f_mount_or_find
+
 if [[ ! -d $BACKUPTO ]] ; then
 	mkdir "$BACKUPTO" && cd "$BACKUPTO"
 	if [[ ! -d ROOT ]] ; then mkdir ROOT/ ; fi
@@ -279,6 +367,9 @@ else
 #	echo '- var/cache/pacman/*'	>> .rxlist
 	cd ..
 fi
+
+#if [[   ]] ; then
+#fi
 
 if [[ $1 =~ -f || $2 =~ -f ]] && [[ -n "$BOOTDELAY" ]] ; then BOOTDELAY=1 ; fi &&
 if [[ -n "$BOOTDELAY" ]] ; then sleep "$BOOTDELAY" ; fi
@@ -336,3 +427,4 @@ if [[ $PWD = /mnt/snapshots && $(findmnt -rno TARGET $BACKUPTO) = $MNTDIR ]] ; t
 	cd / ; sleep 3 &&  umount /mnt/snapshots
 fi
 exit 0
+
